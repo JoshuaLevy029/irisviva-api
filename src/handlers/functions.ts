@@ -1,4 +1,5 @@
 import * as moment from 'moment';
+import fs from 'fs';
 
 const crypto = require('crypto');
 
@@ -248,4 +249,18 @@ export function isNumberRegex (value: string): boolean {
 */
 export function addZeroLeft (num: number, size: number = 1000): string {
   return num.toString().padStart(size.toString().length, '0');
+}
+
+export function fileToGenerativePart (path, mimeType) {
+  try {
+    return {
+      inlineData: {
+        data: fs.readFileSync(path).toString('base64'),
+        mimeType,
+      }
+    }
+  } catch (error) {
+    console.error(`Erro ao ler o arquivo em ${path}:`, error);
+    throw error
+  }
 }
