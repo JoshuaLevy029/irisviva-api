@@ -31,6 +31,7 @@ export class AnalysisController {
     @UseInterceptors(AnyFilesInterceptor())
     async analyze (@Req() req, @UploadedFiles() files: Array<Express.Multer.File>, @Body() body: AnalysisBody) {
         try {
+            console.log(body)
             const user = await useAuth(req, this.userModel)
 
             let frontFile = files.find(file => file.fieldname === 'front')
@@ -41,19 +42,21 @@ export class AnalysisController {
                 throw new BadRequestException('Arquivos inválidos')
             }
 
-            let prompt = master.replace('[NOME DO PACIENTE]', body.name)
-            prompt = prompt.replace('[IDADE]', body.age)
-            prompt = prompt.replace('[PROFISSÃO]', body.occupation)
-            prompt = prompt.replace('[GRATUITO / ESSENCIAL / CLÍNICO / PREMIUM]', 'PREMIUM')
+            let prompt = master
 
             const ai = new GoogleGenAI({ apiKey: this.configService.get('GEMINI_API_KEY') })
-            const model = await ai.models.generateContent({
+            const response = await ai.models.generateContent({
                 model: 'gemini-2.0-flash',
+                config: {
+                    systemInstruction: prompt,
+                },
                 contents: [
                     {
                         role: 'user',
                         parts: [
-                            { text: prompt },
+                            { 
+                                text: `## Dados do paciente:\nNome: ${body.name.trim()}\nIdade: ${body.age.trim()}\nProfissão: ${body.occupation.trim()}\nPlano escolhido: PREMIUM\nPercentual de análise: 100%`
+                            },
                             {
                                 inlineData: {
                                     data: frontFile.buffer.toString('base64'),
@@ -79,12 +82,21 @@ export class AnalysisController {
                 ]
             })
 
+           const json = response.text.replace(/```json/g, '').replace(/```/g, '')
+
+            if (json.includes('WARNING_WRONG_PHOTO')) {
+                return {
+                    status: 'WARNING_WRONG_PHOTO'
+                }
+            }
+
+            console.log(JSON.parse(json))
+
             return {
-                result: model.text
+                result: JSON.parse(json)
             };
         } catch (error) {
-            console.error(error)
-            throw new BadRequestException('Erro ao analisar a íris')
+            throw new BadRequestException(error.message)
         }
     }
 }
