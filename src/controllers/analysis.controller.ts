@@ -8,6 +8,8 @@ import { AnyFilesInterceptor } from "@nestjs/platform-express"
 import master from "src/prompts/master"
 import { GoogleGenAI } from '@google/genai'
 import { fileToGenerativePart } from "src/handlers/functions"
+import * as fs from "fs/promises"
+import * as path from "path"
 
 type AnalysisBody = {
     front: string
@@ -31,7 +33,6 @@ export class AnalysisController {
     @UseInterceptors(AnyFilesInterceptor())
     async analyze (@Req() req, @UploadedFiles() files: Array<Express.Multer.File>, @Body() body: AnalysisBody) {
         try {
-            console.log(body)
             const user = await useAuth(req, this.userModel)
 
             let frontFile = files.find(file => file.fieldname === 'front')
@@ -41,6 +42,10 @@ export class AnalysisController {
             if (!frontFile || !leftsideFile || !rightsideFile) {
                 throw new BadRequestException('Arquivos inválidos')
             }
+
+            const knowledgePath = path.join(__dirname, '..', '..', 'src', 'json', 'knowledge-base.json')
+            const knowledge = await fs.readFile(knowledgePath, 'utf8')
+            const knowledgeJson = JSON.parse(knowledge)
 
             let prompt = master
 
@@ -54,6 +59,7 @@ export class AnalysisController {
                     {
                         role: 'user',
                         parts: [
+                            ...knowledgeJson,
                             { 
                                 text: `## Dados do paciente:\nNome: ${body.name.trim()}\nIdade: ${body.age.trim()}\nProfissão: ${body.occupation.trim()}\nPlano escolhido: PREMIUM\nPercentual de análise: 100%`
                             },
@@ -82,6 +88,8 @@ export class AnalysisController {
                 ]
             })
 
+            console.log(response.text)
+
            const json = response.text.replace(/```json/g, '').replace(/```/g, '')
 
             if (json.includes('WARNING_WRONG_PHOTO')) {
@@ -96,6 +104,10 @@ export class AnalysisController {
                 result: JSON.parse(json)
             };
         } catch (error) {
+            if (error.name === 'JsonParseError') {
+                throw new BadRequestException('Não foi possível analisar as informações fornecidas')
+            }
+
             throw new BadRequestException(error.message)
         }
     }
